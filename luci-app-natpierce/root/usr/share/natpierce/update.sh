@@ -2,16 +2,23 @@
 
 uci_tool=/sbin/uci
 PROG_BIN="/usr/share/natpierce/natpierce"
-# 官网版本号 URL
-url="https://natpierce.oss-cn-beijing.aliyuncs.com/update/version.txt"
-latest_version=$(wget -qO- "$url")
+
+export update="true"
+
+if [ -f "$(dirname $0)/update_parser.sh" ]; then
+    . "$(dirname $0)/update_parser.sh"
+else
+    echo "错误：未找到 update_parser.sh"
+    exit 1
+fi
 
 if [ ! -f "$PROG_BIN" ]; then
     $uci_tool set natpierce.status.current_version="N/A"
     $uci_tool commit natpierce
 fi
 
-if [ -n "$latest_version" ]; then
+if [ -n "$TARGET_VERSION" ]; then
+    latest_version="v${TARGET_VERSION}"
     $uci_tool set natpierce.status.latest_version="$latest_version"
     $uci_tool commit natpierce
     echo "获取最新版本号成功：$latest_version"
@@ -20,5 +27,5 @@ else
     $uci_tool set natpierce.status.latest_version="N/A"
     $uci_tool commit natpierce
     echo "错误：无法获取最新版本号，请检查网络。"
-    exit 0 
+    exit 1
 fi
