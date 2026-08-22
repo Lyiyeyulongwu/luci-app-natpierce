@@ -1,0 +1,105 @@
+<div class="cbi-section">
+    <div class="cbi-section-node">
+        <h3 class="cbi-section-title" style="cursor: pointer; user-select: none;" onclick="toggleLogSection()">
+            <%:运行与更新日志%> <span id="log_toggle_icon" style="font-size: 0.8em; margin-left: 5px;">▼</span>
+        </h3>
+        
+        <div id="log_content_wrapper" style="display: none; margin-top: 10px;">
+            <textarea id="log_textarea" 
+                      style="width: 100%; height: 320px; font-family: monospace; font-size: 12px; background-color: #1e1e1e; color: #00ff00; padding: 10px; border: 1px solid #333; border-radius: 4px; resize: vertical; box-sizing: border-box;" 
+                      readonly="readonly"><%:加载日志中...%></textarea>
+            
+            <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <label style="font-size: 12px; color: #666; margin-right: 5px;">
+                    <input type="checkbox" id="auto_refresh_log" onchange="toggleAutoRefresh(this)" /> <%:自动刷新 (3秒)%>
+                </label>
+                <input type="button" class="cbi-button cbi-button-action" value="<%=translate("刷新日志")%>" onclick="fetchNatpierceLog()" />
+                <input type="button" class="cbi-button cbi-button-apply" value="<%=translate("复制日志")%>" onclick="copyNatpierceLog()" />
+                <input type="button" class="cbi-button cbi-button-remove" value="<%=translate("清空日志")%>" onclick="clearNatpierceLog()" />
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">//<![CDATA[
+var logTimer = null;
+
+function toggleLogSection() {
+    var wrapper = document.getElementById('log_content_wrapper');
+    var icon = document.getElementById('log_toggle_icon');
+    if (wrapper.style.display === 'none') {
+        wrapper.style.display = 'block';
+        icon.textContent = '▲';
+        fetchNatpierceLog();
+    } else {
+        wrapper.style.display = 'none';
+        icon.textContent = '▼';
+        if (logTimer) {
+            clearInterval(logTimer);
+            logTimer = null;
+            document.getElementById('auto_refresh_log').checked = false;
+        }
+    }
+}
+
+function fetchNatpierceLog() {
+    var textarea = document.getElementById('log_textarea');
+    XHR.get('<%=luci.dispatcher.build_url("admin", "services", "natpierce_get_log")%>', null,
+        function(x, result) {
+            if (result && result.status === 'success') {
+                textarea.value = result.log || '<%=translate("暂无日志信息。")%>';
+                textarea.scrollTop = textarea.scrollHeight;
+            } else {
+                textarea.value = '<%=translate("获取日志失败，请检查服务状态或网络。")%>';
+            }
+        }
+    );
+}
+
+function copyNatpierceLog() {
+    var textarea = document.getElementById('log_textarea');
+    if (!textarea.value || textarea.value === '<%=translate("暂无日志信息。")%>') {
+        alert('<%:当前没有可复制的日志！%>');
+        return;
+    }
+    textarea.select();
+    try {
+        var successful = document.execCommand('copy');
+        if (successful) {
+            alert('<%:日志已成功复制到剪贴板！%>');
+        } else {
+            alert('<%:复制失败，请手动选择复制。%>');
+        }
+    } catch (err) {
+        alert('<%:浏览器不支持自动复制，请手动选择复制。%>');
+    }
+}
+
+function clearNatpierceLog() {
+    if (!confirm('<%:确定要清空所有运行与更新日志吗？%>')) {
+        return;
+    }
+
+    XHR.post('<%=luci.dispatcher.build_url("admin", "services", "natpierce_clear_log")%>', null,
+        function(x, result) {
+            if (result && result.status === 'success') {
+                fetchNatpierceLog();
+            } else {
+                alert('<%:清空日志失败：%> ' + (result ? result.message : x.statusText));
+            }
+        }
+    );
+}
+
+function toggleAutoRefresh(cb) {
+    if (cb.checked) {
+        fetchNatpierceLog();
+        logTimer = setInterval(fetchNatpierceLog, 3000);
+    } else {
+        if (logTimer) {
+            clearInterval(logTimer);
+            logTimer = null;
+        }
+    }
+}
+//]]></script>

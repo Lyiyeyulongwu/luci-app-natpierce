@@ -7,6 +7,15 @@ STOP=10
 CONF_FILE="natpierce"
 PROG_BIN="/usr/share/natpierce/natpierce"
 PROG_NAME="natpierce"
+LOG_FILE="/var/log/natpierce.log"
+
+# 统一日志记录函数
+log() {
+    if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE")" -gt 1000 ]; then
+        tail -n 500 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE"
+    fi
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [service] $1" >> "$LOG_FILE"
+}
 
 get_config() {
     config_get_bool enabled "$1" enabled 0
@@ -15,28 +24,42 @@ get_config() {
 
 start_service() {
     if [ ! -x "$PROG_BIN" ]; then
+        log "错误: 主程序二进制文件缺失或无执行权限 ($PROG_BIN)"
         return 1
     fi
 
     config_load "$CONF_FILE"
-
     config_foreach get_config "$CONF_FILE"
 
-    [ "x$enabled" = "x1" ] || return 1
+    if [ "x$enabled" != "x1" ]; then
+        log "服务未启用 (enabled=0)，跳过启动。"
+        return 0
+    fi
+
+    log "正在启动 natpierce 服务 (绑定端口: $port)..."
+
+    procd_open_instance "$PROG_NAME"
     
-    procd_open_instance
-    procd_set_param command "$PROG_BIN"
-    procd_append_param command -p "$port"
-    procd_set_param stdout 1
-    procd_set_param stderr 1
+    procd_set_param command /bin/sh -c "$PROG_BIN -p $port >> $LOG_FILE 2>&1"
+
     procd_set_param respawn
     procd_close_instance
+    
+    log "natpierce 服务启动指令已发出。"
 }
 
 stop_service() {
+    log "正在停止 natpierce 服务..."
+    
+    # 保留旧版本兼容性：手动查找并清理进程
     local pid=$(pgrep -f "$PROG_BIN")
 
-    [ -z "$pid" ] && return
+    if [ -z "$pid" ]; then
+        log "未检测到运行中的 natpierce 进程。"
+        return 0
+    fi
+
+    log "发现进程 PID: $pid，尝试发送 SIGTERM 终止信号..."
     kill "$pid"
 
     local i=0
@@ -46,7 +69,10 @@ stop_service() {
     done
 
     if pgrep -f "$PROG_BIN" >/dev/null; then
+        log "进程未在 5 秒内退出，发送 SIGKILL (kill -9) 强行杀掉进程..."
         kill -9 "$pid"
+    else
+        log "进程已正常退出。"
     fi
 }
 

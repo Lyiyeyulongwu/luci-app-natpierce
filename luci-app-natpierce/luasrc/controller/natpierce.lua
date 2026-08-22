@@ -13,6 +13,9 @@ function index()
     
     entry({"admin", "services", "natpierce_clear_config"}, post("natpierce_clear_config")).leaf=true
 
+    -- 日志查询与清空路由接口
+    entry({"admin", "services", "natpierce_get_log"}, call("natpierce_get_log"))
+    entry({"admin", "services", "natpierce_clear_log"}, post("natpierce_clear_log")).leaf=true
 end
 
 function natpierce_status()
@@ -37,7 +40,6 @@ function natpierce_status()
     end
 
     e.running = service_running and port_is_listening_by_natpierce
-    
     e.listening = port_is_listening_by_natpierce 
     
     luci.http.prepare_content("application/json")
@@ -51,13 +53,9 @@ function natpierce_get_version()
     local current_version  = uci_cursor:get_first("natpierce", "version_info", "current_version")
     local latest_version   = uci_cursor:get_first("natpierce", "version_info", "latest_version")
 
-
     result.status = "success"
-
     result.current_installed_version = current_version or "N/A"
- 
-	result.latest_version_text = latest_version or "N/A"
-
+    result.latest_version_text = latest_version or "N/A"
     result.message = "版本信息获取成功"
 
     luci.http.write_json(result)
@@ -74,7 +72,7 @@ function natpierce_update()
         luci.http.write_json(result)
         return
     end
-    local chmod_code = luci.sys.call("chmod +x " .. update_script_path)
+    nixio.fs.chmod(update_script_path, 755)
 
     local code = luci.sys.call(update_script_path .. " >/dev/null 2>&1")
 
@@ -100,9 +98,9 @@ function natpierce_upgrade()
         luci.http.write_json(result)
         return
     end
-    local chmod_code = luci.sys.call("chmod +x " .. upgrade_script_path)
+    nixio.fs.chmod(upgrade_script_path, 755)
 
-    luci.sys.call(upgrade_script_path .. " >/tmp/natpierce_upgrade.log 2>&1 &")
+    luci.sys.call(upgrade_script_path .. " >>/var/log/natpierce.log 2>&1 &")
 
     result.status = "success"
     result.message = "升级任务已在后台启动。请稍后检查版本信息或日志。"
@@ -141,4 +139,46 @@ function natpierce_clear_config()
 
     luci.http.prepare_content("application/json")
     luci.http.write_json(result)
+end
+
+-- 获取日志内容接口
+function natpierce_get_log()
+    luci.http.prepare_content("application/json")
+    local log_file = "/var/log/natpierce.log"
+    local log_text = ""
+
+    if nixio.fs.access(log_file) then
+        -- 仅读取日志文件的最后 200 行，避免大文件阻塞前端渲染
+        log_text = luci.sys.exec("tail -n 200 " .. log_file)
+    else
+        log_text = "暂无日志信息。"
+    end
+
+    luci.http.write_json({
+        status = "success",
+        log = log_text
+    })
+end
+
+-- 清空日志内容接口
+function natpierce_clear_log()
+    if luci.http.getenv("REQUEST_METHOD") ~= "POST" then
+        luci.http.prepare_content("application/json")
+        luci.http.write_json({
+            status = "error",
+            message = "错误：此操作只允许使用 POST 方法。"
+        })
+        return
+    end
+
+    local log_file = "/var/log/natpierce.log"
+    if nixio.fs.access(log_file) then
+        os.remove(log_file)
+    end
+
+    luci.http.prepare_content("application/json")
+    luci.http.write_json({
+        status = "success",
+        message = "运行日志已成功清空。"
+    })
 end

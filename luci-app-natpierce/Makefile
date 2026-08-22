@@ -4,8 +4,8 @@ LUCI_TITLE:=皎月连内网穿透
 LUCI_DEPENDS:=+luci-base +luci-lib-nixio +luci-compat +kmod-tun
 LUCI_PKGARCH:=all
 PKG_NAME:=luci-app-natpierce
-PKG_VERSION:=26.6.15
-PKG_RELEASE:=20260615
+PKG_VERSION:=26.8.22
+PKG_RELEASE:=20260822
 PKG_DESCRIPTION:=皎月连一键内网穿透是一款纯P2P连接软件，能够组建虚拟局域网或是将本地局域网内的主机端口直接映射到远程主机。
 
 include $(TOPDIR)/feeds/luci/luci.mk
@@ -47,9 +47,18 @@ endef
 
 define Package/luci-app-natpierce/prerm
 #!/bin/sh
-#清除残留
-rm -rf /usr/share/natpierce
-endef
+# 卸载清理任务
+[ -n "${IPKG_INSTROOT}" ] || {
+	# 卸载前先停止并禁用服务
+	/etc/init.d/natpierce stop 2>/dev/null
+	/etc/init.d/natpierce disable 2>/dev/null
 
+	# 清理安装目录与日志文件
+	rm -rf /usr/share/natpierce
+	rm -f /var/log/natpierce.log
+
+	exit 0
+}
+endef
 
 $(eval $(call BuildPackage,luci-app-natpierce))
